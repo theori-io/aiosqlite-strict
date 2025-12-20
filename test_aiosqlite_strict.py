@@ -1,11 +1,10 @@
-import sqlite3
 from datetime import datetime
 from typing import Literal
+import sqlite3
 
+from pydantic import BaseModel, ValidationError
 import aiosqlite
 import pytest
-import aiosqlite_strict
-from pydantic import BaseModel, ValidationError
 
 from aiosqlite_strict import TableModel, db_field, get_pydantic_model
 
@@ -65,7 +64,10 @@ def test_db_field_invalid_types() -> None:
     with pytest.raises(TypeError):
         db_field("blob", BadTypes.model_fields["blob"])
 
-    assert db_field("bad", InvalidDefault.model_fields["bad"]) == "INTEGER NOT NULL DEFAULT 1"
+    assert (
+        db_field("bad", InvalidDefault.model_fields["bad"])
+        == "INTEGER NOT NULL DEFAULT 1"
+    )
 
 
 def test_table_name_resolution() -> None:
@@ -101,8 +103,12 @@ async def test_sqlite_init_and_crud() -> None:
 
         assert UserProfile.__resolved_table_name__ == "user_profile"
 
-        user1 = await UserProfile.create(db, name="name1", email="e1", meta=Meta(tag="t1"))
-        user2 = await UserProfile.create(db, name="name2", email="e2", meta=Meta(tag="t2"))
+        user1 = await UserProfile.create(
+            db, name="name1", email="e1", meta=Meta(tag="t1")
+        )
+        user2 = await UserProfile.create(
+            db, name="name2", email="e2", meta=Meta(tag="t2")
+        )
 
         assert user1.id == 1
         assert user2.id == 2
@@ -156,7 +162,9 @@ async def test_sqlite_init_existing_table_mismatch() -> None:
         name: int
 
     async with aiosqlite.connect(":memory:") as db:
-        await db.execute("CREATE TABLE widget (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+        await db.execute(
+            "CREATE TABLE widget (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"
+        )
         await db.commit()
 
         with pytest.raises(TypeError):
