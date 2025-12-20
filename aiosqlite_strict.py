@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from datetime import datetime
-from inspect import isclass
 from typing import AsyncIterator, AsyncContextManager, Any, Callable, Iterable, Literal, Self, Sequence, Protocol, cast
+import inspect
 import re
 import sqlite3
 import types
@@ -13,11 +13,8 @@ from pydantic.fields import PydanticUndefined # type: ignore
 import aiosqlite
 
 def get_pydantic_model(v: type[Any] | None) -> type[BaseModel] | None:
-    try:
-        if isclass(v) and issubclass(v, BaseModel):
-            return v
-    except TypeError:
-        pass
+    if inspect.isclass(v) and issubclass(v, BaseModel):
+        return v
     if isinstance(v, types.UnionType):
         for variant in typing.get_args(v):
             if (model := get_pydantic_model(variant)) is not None:
@@ -33,12 +30,9 @@ class TypedCursor[T: BaseModel](Protocol):
             kwargs = dict(zip(field_names, row))
             for key, value in kwargs.items():
                 field = fields[key]
-                try:
-                    annotation = field.annotation
-                    if (model := get_pydantic_model(annotation)) is not None and value is not None:
-                        kwargs[key] = model.model_validate_json(value)
-                except TypeError:
-                    pass
+                annotation = field.annotation
+                if (model := get_pydantic_model(annotation)) is not None and value is not None:
+                    kwargs[key] = model.model_validate_json(value)
             return row_cls(**kwargs)
         cursor.row_factory = row_factory # type: ignore
         return cast(Self, cursor)
@@ -257,8 +251,6 @@ def db_field(name: str, field: FieldInfo) -> str:
     if name != "id" and not optional:
         extra.append("NOT NULL")
 
-    is_model = isclass(pytype) and issubclass(pytype, BaseModel)
-
     if (default := field.default) is not PydanticUndefined:
         if default is None:
             extra.append("DEFAULT NULL")
@@ -269,6 +261,7 @@ def db_field(name: str, field: FieldInfo) -> str:
         else:
             raise TypeError(f"unsupported default field {name=} {default=}")
 
+    is_model = inspect.isclass(pytype) and issubclass(pytype, BaseModel)
     if is_model:
         dbtype = "JSONB"
     elif origin is Literal:
