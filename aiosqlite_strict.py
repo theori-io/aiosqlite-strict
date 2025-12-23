@@ -251,11 +251,8 @@ class TableModel(BaseModel):
     def select(
         cls, db: aiosqlite.Connection, query: str = "", params: Sequence[Any] = ()
     ) -> AsyncContextManager[TypedCursor[Self]]:
-        assert isinstance(cls, TableModel)
-        return cast(
-            AsyncContextManager[TypedCursor[Self]],
-            select(cls, db, query=query, params=params),
-        )
+        cursor_gen = select(cls, db, query=query, params=params) # type: ignore
+        return cast(AsyncContextManager[TypedCursor[Self]], cursor_gen)
 
     @classmethod
     async def select_count(
