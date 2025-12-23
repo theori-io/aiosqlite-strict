@@ -252,7 +252,10 @@ class TableModel(BaseModel):
         cls, db: aiosqlite.Connection, query: str = "", params: Sequence[Any] = ()
     ) -> AsyncContextManager[TypedCursor[Self]]:
         assert isinstance(cls, TableModel)
-        return cast(AsyncContextManager[TypedCursor[Self]], select(cls, db, query=query, params=params))
+        return cast(
+            AsyncContextManager[TypedCursor[Self]],
+            select(cls, db, query=query, params=params),
+        )
 
     @classmethod
     async def select_count(
@@ -269,15 +272,18 @@ class TableModel(BaseModel):
     ) -> None:
         if "where" not in query.lower():
             raise ValueError("remove() query must contain WHERE clause")
-        query = (
-            f"DELETE FROM {cls.__resolved_table_name__} {query}"
-        )
+        query = f"DELETE FROM {cls.__resolved_table_name__} {query}"
         await db.execute(query, params)
         await db.commit()
 
     @classmethod
     async def _update(
-        cls, db: aiosqlite.Connection, query: str, params: Sequence[Any] = (), /, **kwargs
+        cls,
+        db: aiosqlite.Connection,
+        query: str,
+        params: Sequence[Any] = (),
+        /,
+        **kwargs,
     ) -> None:
         if "where" not in query.lower():
             raise ValueError("update() query must contain WHERE clause")
@@ -288,15 +294,18 @@ class TableModel(BaseModel):
             v.model_dump_json() if isinstance(v, BaseModel) else v
             for v in kwargs.values()
         ) + tuple(params)
-        query = (
-            f"UPDATE {cls.__resolved_table_name__} SET {', '.join(updates)} {query}"
-        )
+        query = f"UPDATE {cls.__resolved_table_name__} SET {', '.join(updates)} {query}"
         await db.execute(query, params)
         await db.commit()
 
     @classmethod
     async def update(
-        cls, db: aiosqlite.Connection, query: str, params: Sequence[Any] = (), /, **kwargs
+        cls,
+        db: aiosqlite.Connection,
+        query: str,
+        params: Sequence[Any] = (),
+        /,
+        **kwargs,
     ) -> None:
         cons = cls.model_construct()
         for k, v in kwargs.items():
