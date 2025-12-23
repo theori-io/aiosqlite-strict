@@ -24,7 +24,7 @@ from pydantic.fields import PydanticUndefined  # type: ignore
 import aiosqlite
 
 
-def get_pydantic_model(v: type[Any] | None) -> type[BaseModel] | None:
+def get_pydantic_model(v: Any | None) -> type[BaseModel] | None:
     if inspect.isclass(v) and issubclass(v, BaseModel):
         return v
     if isinstance(v, types.UnionType):
@@ -67,7 +67,7 @@ class TypedCursor[T: BaseModel](Protocol):
 
     async def fetchmany(self, size: int | None = None) -> Iterable[T]: ...
 
-    async def fetchall(self) -> Iterable[T]: ...
+    async def fetchall(self) -> list[T]: ...
 
     async def close(self) -> None: ...
 
@@ -81,7 +81,7 @@ class TypedCursor[T: BaseModel](Protocol):
     def arraysize(self) -> int: ...
 
     @arraysize.setter
-    def arraysize(self) -> int: ...
+    def arraysize(self, value: int) -> None: ...
 
     @property
     def connection(self) -> sqlite3.Connection: ...
@@ -237,21 +237,22 @@ class TableModel(BaseModel):
 
         return obj
 
-    @classmethod  # type: ignore
-    async def create[**P](
-        cls: Callable[P, Self],
+    @classmethod
+    async def create[**P, S: Self](
+        cls: Callable[P, S],
         db: aiosqlite.Connection,
         *args: P.args,
         **kwargs: P.kwargs,
-    ) -> Self:  # type: ignore
+    ) -> S:
         obj = cls(*args, **kwargs)
-        return await obj._create_typed(db, obj)  # type: ignore
+        return await obj._create_typed(db, obj)
 
     @classmethod
     def select(
         cls, db: aiosqlite.Connection, query: str = "", params: Sequence[Any] = ()
-    ) -> AsyncContextManager[TypedCursor]:
-        return select(cls, db, query=query, params=params)
+    ) -> AsyncContextManager[TypedCursor[Self]]:
+        assert isinstance(cls, TableModel)
+        return cast(AsyncContextManager[TypedCursor[Self]], select(cls, db, query=query, params=params))
 
     @classmethod
     async def select_count(
@@ -266,7 +267,7 @@ class TableModel(BaseModel):
     async def remove(
         cls, db: aiosqlite.Connection, query: str, params: Sequence[Any] = ()
     ) -> None:
-        if not "where" in query.lower():
+        if "where" not in query.lower():
             raise ValueError("remove() query must contain WHERE clause")
         query = (
             f"DELETE FROM {cls.__resolved_table_name__} {query}"
@@ -278,7 +279,7 @@ class TableModel(BaseModel):
     async def _update(
         cls, db: aiosqlite.Connection, query: str, params: Sequence[Any] = (), /, **kwargs
     ) -> None:
-        if not "where" in query.lower():
+        if "where" not in query.lower():
             raise ValueError("update() query must contain WHERE clause")
         if not kwargs:
             return
