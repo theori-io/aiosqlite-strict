@@ -254,7 +254,7 @@ class TableModel(BaseModel):
         return select(cls, db, query=query, params=params)
 
     @classmethod
-    async def count(
+    async def select_count(
         cls, db: aiosqlite.Connection, query: str = "", params: Sequence[Any] = ()
     ) -> int:
         query = "SELECT count(*) FROM {} {}".format(cls.__resolved_table_name__, query)
@@ -262,23 +262,51 @@ class TableModel(BaseModel):
             row = await cursor.fetchone()
             return row[0] if row is not None else 0
 
-    async def update_one(self, db: aiosqlite.Connection, **kwargs: Any) -> None:
+    @classmethod
+    async def remove(
+        cls, db: aiosqlite.Connection, query: str, params: Sequence[Any] = ()
+    ) -> None:
+        if not "where" in query.lower():
+            raise ValueError("remove() query must contain WHERE clause")
+        query = (
+            f"DELETE FROM {cls.__resolved_table_name__} {query}"
+        )
+        await db.execute(query, params)
+        await db.commit()
+
+    @classmethod
+    async def _update(
+        cls, db: aiosqlite.Connection, query: str, params: Sequence[Any] = (), /, **kwargs
+    ) -> None:
+        if not "where" in query.lower():
+            raise ValueError("update() query must contain WHERE clause")
         if not kwargs:
             return
-        for k, v in kwargs.items():
-            self.__pydantic_validator__.validate_assignment(self, k, v)
-            setattr(self, k, v)
-
         updates = [f"{name}=?" for name in kwargs]
         params = tuple(
             v.model_dump_json() if isinstance(v, BaseModel) else v
             for v in kwargs.values()
-        ) + (self.id,)
+        ) + tuple(params)
         query = (
-            f"UPDATE {self.__resolved_table_name__} SET {', '.join(updates)} WHERE id=?"
+            f"UPDATE {cls.__resolved_table_name__} SET {', '.join(updates)} {query}"
         )
         await db.execute(query, params)
         await db.commit()
+
+    @classmethod
+    async def update(
+        cls, db: aiosqlite.Connection, query: str, params: Sequence[Any] = (), /, **kwargs
+    ) -> None:
+        cons = cls.model_construct()
+        for k, v in kwargs.items():
+            cls.__pydantic_validator__.validate_assignment(cons, k, v)
+        await cls._update(db, query, params, **kwargs)
+
+    async def update_one(self, db: aiosqlite.Connection, **kwargs: Any) -> None:
+        for k, v in kwargs.items():
+            self.__pydantic_validator__.validate_assignment(self, k, v)
+            setattr(self, k, v)
+        await self._update(db, "WHERE id=?", (self.id,), **kwargs)
 
 
 def db_field(name: str, field: FieldInfo) -> str:

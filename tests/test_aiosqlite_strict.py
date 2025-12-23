@@ -127,7 +127,7 @@ async def test_sqlite_init_and_crud() -> None:
         assert row is not None
         assert row.email == "e2"
 
-        count = await UserProfile.count(db)
+        count = await UserProfile.select_count(db)
         assert count == 2
 
         await user1.update_one(db, name="name1.1")
@@ -151,6 +151,40 @@ async def test_sqlite_init_and_crud() -> None:
 
         with pytest.raises(sqlite3.IntegrityError):
             await UserProfile.create(db, name="name3", email="e2", meta=Meta(tag="t3"))
+
+
+@pytest.mark.asyncio
+async def test_update_and_remove() -> None:
+    class Base(TableModel):
+        pass
+
+    class Item(Base):
+        name: str
+        quantity: int
+
+    async with aiosqlite.connect(":memory:") as db:
+        await Base.sqlite_init(db)
+
+        item1 = await Item.create(db, name="first", quantity=1)
+        item2 = await Item.create(db, name="second", quantity=2)
+
+        await Item.update(db, "WHERE id=?", [item1.id], name="updated", quantity=3)
+
+        async with Item.select(db, "WHERE id=?", (item1.id,)) as cursor:
+            row = await cursor.fetchone()
+
+        assert row is not None
+        assert row.name == "updated"
+        assert row.quantity == 3
+
+        await Item.remove(db, "WHERE id=?", (item2.id,))
+        assert await Item.select_count(db) == 1
+
+        with pytest.raises(ValueError):
+            await Item.update(db, "id=?", (item1.id,), name="bad")
+
+        with pytest.raises(ValueError):
+            await Item.remove(db, "id=?", (item1.id,))
 
 
 @pytest.mark.asyncio
