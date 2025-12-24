@@ -273,6 +273,11 @@ class TableModel(BaseModel):
         await db.execute(query, params)
         await db.commit()
 
+    async def remove_one(self, db: aiosqlite.Connection) -> None:
+        query = f"DELETE FROM {self.__class__.__resolved_table_name__} WHERE id=?"
+        await db.execute(query, (self.id,))
+        await db.commit()
+
     @classmethod
     async def _update(
         cls,

@@ -188,6 +188,34 @@ async def test_update_and_remove() -> None:
 
 
 @pytest.mark.asyncio
+async def test_remove_one() -> None:
+    class Base(TableModel):
+        pass
+
+    class Item(Base):
+        name: str
+        quantity: int
+
+    async with aiosqlite.connect(":memory:") as db:
+        await Base.sqlite_init(db)
+
+        item1 = await Item.create(db, name="first", quantity=1)
+        item2 = await Item.create(db, name="second", quantity=2)
+
+        await item1.remove_one(db)
+
+        async with Item.select(db, "WHERE id=?", (item1.id,)) as cursor:
+            row = await cursor.fetchone()
+
+        assert row is None
+        assert await Item.select_count(db) == 1
+
+        async with Item.select(db, "WHERE id=?", (item2.id,)) as cursor:
+            row = await cursor.fetchone()
+
+        assert row is not None
+
+@pytest.mark.asyncio
 async def test_sqlite_init_existing_table_mismatch() -> None:
     class Base(TableModel):
         pass
