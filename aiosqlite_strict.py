@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import datetime
 from typing import (
     AsyncIterator,
@@ -22,6 +23,7 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 from pydantic.fields import PydanticUndefined  # type: ignore
 import aiosqlite
+import orjson
 
 
 def get_pydantic_model(v: Any | None) -> type[BaseModel] | None:
@@ -38,17 +40,14 @@ class TypedCursor[T: BaseModel](Protocol):
     @classmethod
     def wrap_cursor(cls, row_cls: type[T], cursor: aiosqlite.Cursor) -> Self:
         def row_factory(cursor: aiosqlite.Cursor, row: aiosqlite.Row) -> T:
-            fields = row_cls.model_fields
+            fields = row_cls.__sql_fields__
             field_names = fields.keys()
             kwargs = dict(zip(field_names, row))
-            for key, value in kwargs.items():
-                field = fields[key]
-                annotation = field.annotation
-                if (
-                    model := get_pydantic_model(annotation)
-                ) is not None and value is not None:
-                    kwargs[key] = model.model_validate_json(value)
-            return row_cls(**kwargs)
+            kwargs = {
+                k: orjson.loads(v) if fields[k].dbtype == "JSONB" else v
+                for k, v in kwargs.items()
+            }
+            return row_cls.model_validate(kwargs)
 
         cursor.row_factory = row_factory  # type: ignore
         return cast(Self, cursor)
@@ -103,6 +102,14 @@ async def select[T: TableModel](
         yield TypedCursor.wrap_cursor(cls, cursor)
 
 
+@dataclass(slots=True)
+class SqlField:
+    name: str
+    optional: bool
+    dbtype: str
+    schema: str
+
+
 class TableModel(BaseModel):
     id: int = 0
 
@@ -110,12 +117,18 @@ class TableModel(BaseModel):
     __unique__: list[tuple[str, ...]] = []
     __resolved_table_name__: str = ""
     __table_name__: str | None = None
+    __sql_fields__: dict[str, SqlField]
 
-    def __init_subclass__(cls, **kwargs):
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs):
+        super().__pydantic_init_subclass__(**kwargs)
         if (table_name := cls.__table_name__) is None:
             table_name = re.sub(r"([a-zA-Z])([A-Z])", r"\1_\2", cls.__name__).lower()
         cls.__resolved_table_name__ = table_name
-        super().__init_subclass__(**kwargs)
+        cls.__sql_fields__ = {
+            name: db_field(name, field)
+            for name, field in cls.model_fields.items()
+        }
 
     @classmethod
     async def sqlite_init(cls, db: aiosqlite.Connection) -> None:
@@ -126,10 +139,7 @@ class TableModel(BaseModel):
             for name in column_names:
                 if not re.match(r"^\w+$", name):
                     raise ValueError(f"invalid field name {name!r} on {subcls}")
-            column_fields = {
-                name: db_field(name, field)
-                for name, field in subcls.model_fields.items()
-            }
+            column_fields = subcls.__sql_fields__
 
             async with db.execute(f"PRAGMA table_info({table_name})") as cursor:
                 table_rows = await cursor.fetchall()
@@ -155,7 +165,7 @@ class TableModel(BaseModel):
                     column_spec = " ".join([x for x in spec_parts if x])
                     db_columns.add(name)
                     if (model_spec := column_fields.get(name)) is not None:
-                        if column_spec != model_spec:
+                        if column_spec != model_spec.schema:
                             raise TypeError(
                                 f"db column spec does not match model {table_name=} {name=} {column_spec=} != {model_spec=}"
                             )
@@ -173,14 +183,14 @@ class TableModel(BaseModel):
                             f"db column missing and no default value present to create it {table_name=} column={name=}"
                         )
                     alter_query = "ALTER TABLE {} ADD COLUMN {} {}".format(
-                        table_name, name, column_fields[name]
+                        table_name, name, column_fields[name].schema
                     )
                     _ = await db.execute(alter_query)
 
             else:
                 # create the table
                 column_queries = [
-                    "{} {}".format(name, field) for name, field in column_fields.items()
+                    "{} {}".format(name, field.schema) for name, field in column_fields.items()
                 ]
 
                 # unique constraints
@@ -321,7 +331,7 @@ class TableModel(BaseModel):
         await self._update(db, "WHERE id=?", (self.id,), **kwargs)
 
 
-def db_field(name: str, field: FieldInfo) -> str:
+def db_field(name: str, field: FieldInfo) -> SqlField:
     extra: list[str] = []
     if name == "id":
         extra.append("PRIMARY KEY")
@@ -363,6 +373,12 @@ def db_field(name: str, field: FieldInfo) -> str:
     elif pytype is datetime:
         dbtype = "DATETIME"
     else:
-        raise TypeError(f"unknown field type: {pytype}")
+        raise TypeError(f"unsupported type {pytype}")
 
-    return " ".join([dbtype] + extra)
+    schema = " ".join([dbtype] + extra)
+    return SqlField(
+        name,
+        optional,
+        dbtype,
+        schema,
+    )
