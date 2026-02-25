@@ -378,6 +378,8 @@ def db_field(name: str, field: FieldInfo) -> SqlField:
         dbtype = "TEXT"
     elif pytype is datetime:
         dbtype = "DATETIME"
+    elif origin in (list, tuple, set):
+        dbtype = "JSONB"
     else:
         raise TypeError(f"unsupported type {pytype}")
 
