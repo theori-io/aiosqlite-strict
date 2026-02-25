@@ -22,7 +22,7 @@ import typing
 
 from pydantic import BaseModel, PrivateAttr
 from pydantic.fields import FieldInfo
-from pydantic.fields import PydanticUndefined
+from pydantic.fields import PydanticUndefined # pyright: ignore
 import aiosqlite
 import orjson
 
