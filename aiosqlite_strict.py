@@ -6,6 +6,7 @@ from typing import (
     AsyncContextManager,
     Any,
     Callable,
+    ClassVar,
     Iterable,
     Literal,
     Optional,
@@ -20,7 +21,7 @@ import sqlite3
 import types
 import typing
 
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 from pydantic.fields import PydanticUndefined # pyright: ignore
 import aiosqlite
@@ -114,12 +115,12 @@ class SqlField:
 class TableModel(BaseModel):
     id: int = 0
 
-    __indices__: list[tuple[str, ...]] = []
-    __unique__: list[tuple[str, ...]] = []
-    __resolved_table_name__: str = ""
-    __table_name__: str | None = None
-    __sql_fields__: dict[str, SqlField] = PrivateAttr()
-    __json_fields__: set[str] = PrivateAttr()
+    __indices__: ClassVar[list[tuple[str, ...]]] = []
+    __unique__: ClassVar[list[tuple[str, ...]]] = []
+    __resolved_table_name__: ClassVar[str] = ""
+    __table_name__: ClassVar[str | None] = None
+    __sql_fields__: ClassVar[dict[str, SqlField]]
+    __json_fields__: ClassVar[set[str]]
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs):
