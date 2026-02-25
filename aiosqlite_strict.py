@@ -118,6 +118,7 @@ class TableModel(BaseModel):
     __resolved_table_name__: str = ""
     __table_name__: str | None = None
     __sql_fields__: dict[str, SqlField]
+    __json_fields__: set[str]
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs):
@@ -129,6 +130,7 @@ class TableModel(BaseModel):
             name: db_field(name, field)
             for name, field in cls.model_fields.items()
         }
+        cls.__json_fields__ = {k for k, f in cls.__sql_fields__.items() if f.dbtype == "JSONB"}
 
     @classmethod
     async def sqlite_init(cls, db: aiosqlite.Connection) -> None:
@@ -229,15 +231,32 @@ class TableModel(BaseModel):
 
             await db.commit()
 
+    def model_dump_sql(self) -> dict[str, Any]:
+        json_fields = self.__json_fields__
+        obj = self.model_dump()
+        return {
+            k: orjson.dumps(v) if k in json_fields else v
+            for k, v in obj.items()
+        }
+
+    @classmethod
+    def model_validate_sql(cls, obj: dict[str, Any]) -> Self:
+        json_fields = cls.__json_fields__
+        obj = {
+            k: orjson.loads(v) if k in json_fields else v
+            for k, v in obj.items()
+        }
+        return cls.model_validate(obj)
+
     @classmethod
     async def _create_typed(cls, db: aiosqlite.Connection, obj: Self) -> Self:
-        names = [name for name in cls.model_fields.keys() if name != "id"]
+        model = obj.model_dump_sql()
+        model.pop("id", None)
+
+        names = list(model.keys())
         param_str = ", ".join("?" for _ in names)
         name_str = ", ".join(names)
-        value_params = [getattr(obj, name) for name in names]
-        value_params = [
-            v.model_dump_json() if isinstance(v, BaseModel) else v for v in value_params
-        ]
+        value_params = list(model.values())
 
         query = f"INSERT INTO {cls.__resolved_table_name__} ({name_str}) VALUES ({param_str})"
         async with db.execute_insert(query, value_params) as rowid_tuple:
@@ -301,10 +320,11 @@ class TableModel(BaseModel):
             raise ValueError("update() query must contain WHERE clause")
         if not kwargs:
             return
+        json_fields = cls.__json_fields__
         updates = [f"{name}=?" for name in kwargs]
         params = tuple(
-            v.model_dump_json() if isinstance(v, BaseModel) else v
-            for v in kwargs.values()
+            v.model_dump_json() if isinstance(v, BaseModel) else (orjson.dumps(v) if k in json_fields else v)
+            for k, v in kwargs.items()
         ) + tuple(params)
         query = f"UPDATE {cls.__resolved_table_name__} SET {', '.join(updates)} {query}"
         await db.execute(query, params)
