@@ -6,7 +6,7 @@ from pydantic import BaseModel, ValidationError
 import aiosqlite
 import pytest
 
-from aiosqlite_strict import TableModel, db_field, get_pydantic_model
+from aiosqlite_strict import SqlField, TableModel, db_field, get_pydantic_model
 
 
 def test_get_pydantic_model() -> None:
@@ -36,16 +36,36 @@ def test_db_field_types_and_defaults() -> None:
         meta: Nested
 
     fields = Fields.model_fields
-    assert db_field("id", fields["id"]) == "INTEGER PRIMARY KEY DEFAULT 0"
-    assert db_field("count", fields["count"]) == "INTEGER NOT NULL"
-    assert db_field("ratio", fields["ratio"]) == "REAL NOT NULL"
-    assert db_field("active", fields["active"]) == "BOOLEAN NOT NULL"
-    assert db_field("name", fields["name"]) == "TEXT NOT NULL"
-    assert db_field("created_at", fields["created_at"]) == "DATETIME NOT NULL"
-    assert db_field("kind", fields["kind"]) == "TEXT NOT NULL"
-    assert db_field("note", fields["note"]) == "TEXT DEFAULT NULL"
-    assert db_field("nickname", fields["nickname"]) == "TEXT NOT NULL DEFAULT 'nick'"
-    assert db_field("meta", fields["meta"]) == "JSONB NOT NULL"
+    assert db_field("id", fields["id"]) == SqlField(
+        "id", False, "INTEGER", "INTEGER PRIMARY KEY DEFAULT 0"
+    )
+    assert db_field("count", fields["count"]) == SqlField(
+        "count", False, "INTEGER", "INTEGER NOT NULL"
+    )
+    assert db_field("ratio", fields["ratio"]) == SqlField(
+        "ratio", False, "REAL", "REAL NOT NULL"
+    )
+    assert db_field("active", fields["active"]) == SqlField(
+        "active", False, "BOOLEAN", "BOOLEAN NOT NULL"
+    )
+    assert db_field("name", fields["name"]) == SqlField(
+        "name", False, "TEXT", "TEXT NOT NULL"
+    )
+    assert db_field("created_at", fields["created_at"]) == SqlField(
+        "created_at", False, "DATETIME", "DATETIME NOT NULL"
+    )
+    assert db_field("kind", fields["kind"]) == SqlField(
+        "kind", False, "TEXT", "TEXT NOT NULL"
+    )
+    assert db_field("note", fields["note"]) == SqlField(
+        "note", True, "TEXT", "TEXT DEFAULT NULL"
+    )
+    assert db_field("nickname", fields["nickname"]) == SqlField(
+        "nickname", False, "TEXT", "TEXT NOT NULL DEFAULT 'nick'"
+    )
+    assert db_field("meta", fields["meta"]) == SqlField(
+        "meta", False, "JSONB", "JSONB NOT NULL"
+    )
 
 
 def test_db_field_invalid_types() -> None:
@@ -64,9 +84,8 @@ def test_db_field_invalid_types() -> None:
     with pytest.raises(TypeError):
         db_field("blob", BadTypes.model_fields["blob"])
 
-    assert (
-        db_field("bad", InvalidDefault.model_fields["bad"])
-        == "INTEGER NOT NULL DEFAULT 1"
+    assert db_field("bad", InvalidDefault.model_fields["bad"]) == SqlField(
+        "bad", False, "INTEGER", "INTEGER NOT NULL DEFAULT 1"
     )
 
 
