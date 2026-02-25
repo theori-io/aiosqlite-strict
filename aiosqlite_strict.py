@@ -339,11 +339,13 @@ def db_field(name: str, field: FieldInfo) -> SqlField:
     pytype = field.annotation
     origin = typing.get_origin(pytype)
     optional = False
-    if origin is types.UnionType:
+    if origin in (types.UnionType, typing.Union):
         args = typing.get_args(pytype)
         if len(args) == 2 and type(None) in args:
             optional = True
             pytype = [x for x in args if x is not type(None)][0]
+            origin = typing.get_origin(pytype)
+
     if name != "id" and not optional:
         extra.append("NOT NULL")
 
@@ -358,6 +360,10 @@ def db_field(name: str, field: FieldInfo) -> SqlField:
             raise TypeError(f"unsupported default field {name=} {default=}")
 
     is_model = inspect.isclass(pytype) and issubclass(pytype, BaseModel)
+    if origin in (types.UnionType, typing.Union):
+        if all(inspect.isclass(arg) and issubclass(arg, BaseModel) for arg in typing.get_args(pytype)):
+            is_model = True
+
     if is_model:
         dbtype = "JSONB"
     elif origin is Literal:
