@@ -8,6 +8,7 @@ from typing import (
     Callable,
     Iterable,
     Literal,
+    Optional,
     Self,
     Sequence,
     Protocol,
@@ -19,9 +20,9 @@ import sqlite3
 import types
 import typing
 
-from pydantic import BaseModel
+from pydantic import BaseModel, PrivateAttr
 from pydantic.fields import FieldInfo
-from pydantic.fields import PydanticUndefined  # type: ignore
+from pydantic.fields import PydanticUndefined
 import aiosqlite
 import orjson
 
@@ -117,8 +118,8 @@ class TableModel(BaseModel):
     __unique__: list[tuple[str, ...]] = []
     __resolved_table_name__: str = ""
     __table_name__: str | None = None
-    __sql_fields__: dict[str, SqlField]
-    __json_fields__: set[str]
+    __sql_fields__: dict[str, SqlField] = PrivateAttr()
+    __json_fields__: set[str] = PrivateAttr()
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs):
