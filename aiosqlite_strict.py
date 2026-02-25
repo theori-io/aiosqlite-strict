@@ -39,8 +39,8 @@ def get_pydantic_model(v: Any | None) -> type[BaseModel] | None:
 
 class TypedCursor[T: BaseModel](Protocol):
     @classmethod
-    def wrap_cursor(cls, row_cls: type[T], cursor: aiosqlite.Cursor) -> Self:
-        def row_factory(cursor: aiosqlite.Cursor, row: aiosqlite.Row) -> T:
+    def wrap_cursor[T1: TableModel](cls, row_cls: type[T1], cursor: aiosqlite.Cursor) -> Self:
+        def row_factory(cursor: aiosqlite.Cursor, row: aiosqlite.Row) -> T1:
             fields = row_cls.__sql_fields__
             field_names = fields.keys()
             kwargs = dict(zip(field_names, row))
@@ -268,14 +268,14 @@ class TableModel(BaseModel):
         return obj
 
     @classmethod
-    async def create[**P, S: Self](
+    async def create[**P, S: Self]( # ty: ignore[invalid-type-variable-bound]
         cls: Callable[P, S],
         db: aiosqlite.Connection,
         *args: P.args,
         **kwargs: P.kwargs,
     ) -> S:
         obj = cls(*args, **kwargs)
-        return await obj._create_typed(db, obj)
+        return await obj._create_typed(db, obj) # ty: ignore[unresolved-attribute]
 
     @classmethod
     def select(
