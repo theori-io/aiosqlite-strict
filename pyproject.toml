@@ -22,8 +22,8 @@ test = [
     "pytest-cov>=6.3.0",
 ]
 
-[tool.setuptools]
-py-modules = ["aiosqlite_strict"]
+[tool.setuptools.package-data]
+aiosqlite_strict = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
