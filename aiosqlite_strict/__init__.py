@@ -316,7 +316,7 @@ class TableModel(BaseModel):
         query: str,
         params: Sequence[Any] = (),
         /,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         if "where" not in query.lower():
             raise ValueError("update() query must contain WHERE clause")
@@ -339,7 +339,7 @@ class TableModel(BaseModel):
         query: str,
         params: Sequence[Any] = (),
         /,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         cons = cls.model_construct()
         for k, v in kwargs.items():
