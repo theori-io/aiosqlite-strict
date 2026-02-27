@@ -269,6 +269,36 @@ class TableModel(BaseModel):
         return obj
 
     @classmethod
+    async def insert_many(
+        cls,
+        db: aiosqlite.Connection,
+        objects: list[Self],
+    ) -> list[Self]:
+        if not objects:
+            return objects
+
+        def submit(objects: list[Self]):
+            fields = cls.__sql_fields__.copy()
+            fields.pop("id", None)
+            names = tuple(fields.keys())
+            param_str = ", ".join("?" for _ in names)
+            name_str = ", ".join(names)
+            query = f"INSERT INTO {cls.__table__} ({name_str}) VALUES ({param_str})"
+
+            conn = db._conn
+            for obj in objects:
+                model = obj.model_dump_sql()
+                model.pop("id", None)
+                value_params = tuple(model.values())
+
+                cursor = conn.execute(query, value_params)
+                obj.id = cursor.lastrowid
+            conn.commit()
+            return objects
+
+        return await db._execute(submit, objects)
+
+    @classmethod
     async def create[**P, S: Self]( # ty: ignore[invalid-type-variable-bound] # pyright: ignore[reportGeneralTypeIssues]
         cls: Callable[P, S], # pyright: ignore
         db: aiosqlite.Connection,
