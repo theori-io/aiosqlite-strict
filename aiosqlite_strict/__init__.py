@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import (
     AsyncIterator,
@@ -21,7 +21,7 @@ import sqlite3
 import types
 import typing
 
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 from pydantic.fields import FieldInfo
 from pydantic.fields import PydanticUndefined # pyright: ignore
 import aiosqlite
@@ -107,9 +107,11 @@ async def select[T: TableModel](
 @dataclass(slots=True)
 class SqlField:
     name: str
-    optional: bool
     dbtype: str
     schema: str
+    adapter: TypeAdapter = field(compare=False)
+    optional: bool = False
+    model: bool = False
 
 
 class TableModel(BaseModel):
@@ -119,7 +121,6 @@ class TableModel(BaseModel):
     __unique__: ClassVar[list[tuple[str, ...]]] = []
     __table__: ClassVar[str] = ""
     __sql_fields__: ClassVar[dict[str, SqlField]]
-    __json_fields__: ClassVar[set[str]]
 
     @classmethod
     def __init_subclass__(cls, **kwargs):
@@ -134,7 +135,6 @@ class TableModel(BaseModel):
             name: db_field(name, field)
             for name, field in cls.model_fields.items()
         }
-        cls.__json_fields__ = {k for k, f in cls.__sql_fields__.items() if f.dbtype == "JSONB"}
 
     @classmethod
     async def sqlite_init(cls, db: aiosqlite.Connection) -> None:
@@ -236,21 +236,21 @@ class TableModel(BaseModel):
             await db.commit()
 
     def model_dump_sql(self) -> dict[str, Any]:
-        json_fields = self.__json_fields__
-        obj = self.model_dump()
+        sql_fields = self.__sql_fields__
+        obj = self.model_dump(mode="json")
         return {
-            k: orjson.dumps(v) if k in json_fields else v
+            k: orjson.dumps(v) if sql_fields[k].dbtype == "JSONB" else v
             for k, v in obj.items()
         }
 
     @classmethod
     def model_validate_sql(cls, obj: dict[str, Any]) -> Self:
-        json_fields = cls.__json_fields__
+        sql_fields = self.__sql_fields__
         obj = {
-            k: orjson.loads(v) if k in json_fields else v
-            for k, v in obj.items()
+            k: orjson.loads(v) if sql_fields[k].dbtype == "JSONB" else v
+            for k, (v, f) in obj.items()
         }
-        return cls.model_validate(obj)
+        return cls.model_validate(obj, mode="json")
 
     @classmethod
     async def _create_typed(cls, db: aiosqlite.Connection, obj: Self) -> Self:
@@ -324,12 +324,15 @@ class TableModel(BaseModel):
             raise ValueError("update() query must contain WHERE clause")
         if not kwargs:
             return
-        json_fields = cls.__json_fields__
+        sql_fields = cls.__sql_fields__
         updates = [f"{name}=?" for name in kwargs]
+
+        kwargs_fields = {k: (v, sql_fields[k]) for k, v in kwargs.items()}
         params = tuple(
-            v.model_dump_json() if isinstance(v, BaseModel) else (orjson.dumps(v) if k in json_fields else v)
-            for k, v in kwargs.items()
+            f.adapter.dump_json(v) if f.dbtype == "JSONB" else f.adapter.dump_python(v, mode="json")
+            for k, (v, f) in kwargs_fields.items()
         ) + tuple(params)
+
         query = f"UPDATE {cls.__table__} SET {', '.join(updates)} {query}"
         await db.execute(query, params)
         await db.commit()
@@ -345,7 +348,7 @@ class TableModel(BaseModel):
     ) -> None:
         cons = cls.model_construct()
         for k, v in kwargs.items():
-            cls.__pydantic_validator__.validate_assignment(cons, k, v)
+            v2 = cls.__pydantic_validator__.validate_assignment(cons, k, v)
         await cls._update(db, query, params, **kwargs)
 
     async def update_one(self, db: aiosqlite.Connection, **kwargs: Any) -> None:
@@ -412,8 +415,10 @@ def db_field(name: str, field: FieldInfo) -> SqlField:
 
     schema = " ".join([dbtype] + extra)
     return SqlField(
-        name,
-        optional,
-        dbtype,
-        schema,
+        name=name,
+        dbtype=dbtype,
+        schema=schema,
+        adapter=TypeAdapter(field.annotation),
+        optional=optional,
+        model=is_model,
     )

@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Literal
 import sqlite3
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
 import aiosqlite
 import pytest
 
@@ -38,34 +38,34 @@ def test_db_field_types_and_defaults() -> None:
 
     fields = Fields.model_fields
     assert db_field("id", fields["id"]) == SqlField(
-        "id", False, "INTEGER", "INTEGER PRIMARY KEY DEFAULT 0"
+        "id", "INTEGER", "INTEGER PRIMARY KEY DEFAULT 0", TypeAdapter(int),
     )
     assert db_field("count", fields["count"]) == SqlField(
-        "count", False, "INTEGER", "INTEGER NOT NULL"
+        "count", "INTEGER", "INTEGER NOT NULL", TypeAdapter(int),
     )
     assert db_field("ratio", fields["ratio"]) == SqlField(
-        "ratio", False, "REAL", "REAL NOT NULL"
+        "ratio", "REAL", "REAL NOT NULL", TypeAdapter(float),
     )
     assert db_field("active", fields["active"]) == SqlField(
-        "active", False, "BOOLEAN", "BOOLEAN NOT NULL"
+        "active", "BOOLEAN", "BOOLEAN NOT NULL", TypeAdapter(bool),
     )
     assert db_field("name", fields["name"]) == SqlField(
-        "name", False, "TEXT", "TEXT NOT NULL"
+        "name", "TEXT", "TEXT NOT NULL", TypeAdapter(str),
     )
     assert db_field("created_at", fields["created_at"]) == SqlField(
-        "created_at", False, "DATETIME", "DATETIME NOT NULL"
+        "created_at", "DATETIME", "DATETIME NOT NULL", TypeAdapter(datetime),
     )
     assert db_field("kind", fields["kind"]) == SqlField(
-        "kind", False, "TEXT", "TEXT NOT NULL"
+        "kind", "TEXT", "TEXT NOT NULL", TypeAdapter(str),
     )
     assert db_field("note", fields["note"]) == SqlField(
-        "note", True, "TEXT", "TEXT DEFAULT NULL"
+        "note", "TEXT", "TEXT DEFAULT NULL", TypeAdapter(str), optional=True,
     )
     assert db_field("nickname", fields["nickname"]) == SqlField(
-        "nickname", False, "TEXT", "TEXT NOT NULL DEFAULT 'nick'"
+        "nickname", "TEXT", "TEXT NOT NULL DEFAULT 'nick'", TypeAdapter(str),
     )
     assert db_field("meta", fields["meta"]) == SqlField(
-        "meta", False, "JSONB", "JSONB NOT NULL"
+        "meta", "JSONB", "JSONB NOT NULL", TypeAdapter(Nested), model=True,
     )
 
 
@@ -86,7 +86,7 @@ def test_db_field_invalid_types() -> None:
         db_field("blob", BadTypes.model_fields["blob"])
 
     assert db_field("bad", InvalidDefault.model_fields["bad"]) == SqlField(
-        "bad", False, "INTEGER", "INTEGER NOT NULL DEFAULT 1"
+        "bad", "INTEGER", "INTEGER NOT NULL DEFAULT 1", TypeAdapter(int),
     )
 
 
