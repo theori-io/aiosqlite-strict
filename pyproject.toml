@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aiosqlite-strict"
-version = "1.0.8"
+version = "1.0.9"
 description = "aiosqlite + strict pydantic models"
 readme = "README.md"
 requires-python = ">=3.13"
