@@ -278,22 +278,22 @@ class TableModel(BaseModel):
             return objects
 
         def submit(objects: list[Self]):
-            fields = cls.__sql_fields__.copy()
-            fields.pop("id", None)
-            names = tuple(fields.keys())
-            param_str = ", ".join("?" for _ in names)
-            name_str = ", ".join(names)
-            query = f"INSERT INTO {cls.__table__} ({name_str}) VALUES ({param_str})"
-
             conn = db._conn
-            for obj in objects:
-                model = obj.model_dump_sql()
-                model.pop("id", None)
-                value_params = tuple(model.values())
+            with conn:
+                fields = cls.__sql_fields__.copy()
+                fields.pop("id", None)
+                names = tuple(fields.keys())
+                param_str = ", ".join("?" for _ in names)
+                name_str = ", ".join(names)
+                query = f"INSERT INTO {cls.__table__} ({name_str}) VALUES ({param_str})"
 
-                cursor = conn.execute(query, value_params)
-                obj.id = cursor.lastrowid
-            conn.commit()
+                for obj in objects:
+                    model = obj.model_dump_sql()
+                    model.pop("id", None)
+                    value_params = tuple(model.values())
+
+                    cursor = conn.execute(query, value_params)
+                    obj.id = cursor.lastrowid
             return objects
 
         return await db._execute(submit, objects)

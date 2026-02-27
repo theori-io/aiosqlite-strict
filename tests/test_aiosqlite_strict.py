@@ -223,6 +223,63 @@ async def test_update_and_remove() -> None:
 
 
 @pytest.mark.asyncio
+async def test_insert_many() -> None:
+    class Base(TableModel):
+        pass
+
+    class Item(Base):
+        name: str
+        quantity: int
+
+    async with aiosqlite.connect(":memory:") as db:
+        await Base.sqlite_init(db)
+
+        items = [
+            Item(name="first", quantity=1),
+            Item(name="second", quantity=2),
+            Item(name="third", quantity=3),
+        ]
+        await Item.insert_many(db, items)
+
+        assert [item.id for item in items] == [1, 2, 3]
+
+        async with Item.select(db, "ORDER BY id") as cursor:
+            rows = await cursor.fetchall()
+
+        assert [row.name for row in rows] == ["first", "second", "third"]
+        assert [row.quantity for row in rows] == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_insert_many_rolls_back_on_partial_failure() -> None:
+    class Base(TableModel):
+        pass
+
+    class Item(Base):
+        __unique__ = [("name",)]
+
+        name: str
+        quantity: int
+
+    async with aiosqlite.connect(":memory:") as db:
+        await Base.sqlite_init(db)
+
+        items = [
+            Item(name="first", quantity=1),
+            Item(name="second", quantity=2),
+            Item(name="second", quantity=3),
+        ]
+
+        with pytest.raises(sqlite3.IntegrityError):
+            await Item.insert_many(db, items)
+
+        # A later commit should not persist any rows from the failed batch.
+        await db.commit()
+
+        assert await Item.select_count(db) == 0
+
+
+@pytest.mark.asyncio
 async def test_remove_one() -> None:
     class Base(TableModel):
         pass
