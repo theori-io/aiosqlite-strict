@@ -28,6 +28,10 @@ import aiosqlite
 import orjson
 
 
+def _execute_insert(conn: aiosqlite.Connection, sql: str, parameters: Any) -> Optional[int]:
+    cursor = conn._conn.execute(sql, parameters)
+    return cursor.lastrowid
+
 def get_pydantic_model(v: Any | None) -> type[BaseModel] | None:
     if inspect.isclass(v) and issubclass(v, BaseModel):
         return v
@@ -259,9 +263,7 @@ class TableModel(BaseModel):
         value_params = list(model.values())
 
         query = f"INSERT INTO {cls.__table__} ({name_str}) VALUES ({param_str})"
-        async with db.execute_insert(query, value_params) as rowid_tuple:
-            assert rowid_tuple is not None
-            obj.id = rowid_tuple[0]
+        obj.id = await db._execute(_execute_insert, db, query, value_params)
         await db.commit()
 
         return obj
