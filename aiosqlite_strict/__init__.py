@@ -269,12 +269,12 @@ class TableModel(BaseModel):
         return obj
 
     @classmethod
-    async def create[**P, S: Self]( # ty: ignore[invalid-type-variable-bound]
-        cls: Callable[P, S],
+    async def create[**P, S: Self]( # ty: ignore[invalid-type-variable-bound] # pyright: ignore[reportGeneralTypeIssues]
+        cls: Callable[P, S], # pyright: ignore
         db: aiosqlite.Connection,
         *args: P.args,
         **kwargs: P.kwargs,
-    ) -> S:
+    ) -> S: # pyright: ignore[reportInvalidTypeVarUse]
         obj = cls(*args, **kwargs)
         return await obj._create_typed(db, obj) # ty: ignore[unresolved-attribute]
 
