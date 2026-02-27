@@ -94,12 +94,11 @@ def test_table_name_resolution() -> None:
     class CamelCase(TableModel):
         name: str
 
-    class CustomName(TableModel):
-        __table_name__ = "custom_table"
+    class CustomName(TableModel, table="custom_table"):
         name: str
 
-    assert CamelCase.__resolved_table_name__ == "camel_case"
-    assert CustomName.__resolved_table_name__ == "custom_table"
+    assert CamelCase.__table__ == "camel_case"
+    assert CustomName.__table__ == "custom_table"
 
 
 @pytest.mark.asyncio
@@ -137,7 +136,7 @@ async def test_sqlite_init_and_crud() -> None:
     async with aiosqlite.connect(":memory:") as db:
         await Base.sqlite_init(db)
 
-        assert UserProfile.__resolved_table_name__ == "user_profile"
+        assert UserProfile.__table__ == "user_profile"
 
         user1 = await UserProfile.create(
             db, name="name1", email="e1", meta=Meta(tag="t1")

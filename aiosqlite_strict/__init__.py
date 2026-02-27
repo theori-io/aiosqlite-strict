@@ -98,7 +98,7 @@ async def select[T: TableModel](
 ) -> AsyncIterator[TypedCursor[T]]:
     field_names = cls.model_fields.keys()
     query = "SELECT {} FROM {} {}".format(
-        ", ".join(field_names), cls.__resolved_table_name__, query
+        ", ".join(field_names), cls.__table__, query
     )
     async with db.execute(query, params) as cursor:
         yield TypedCursor.wrap_cursor(cls, cursor)
@@ -117,17 +117,19 @@ class TableModel(BaseModel):
 
     __indices__: ClassVar[list[tuple[str, ...]]] = []
     __unique__: ClassVar[list[tuple[str, ...]]] = []
-    __resolved_table_name__: ClassVar[str] = ""
-    __table_name__: ClassVar[str | None] = None
+    __table__: ClassVar[str] = ""
     __sql_fields__: ClassVar[dict[str, SqlField]]
     __json_fields__: ClassVar[set[str]]
 
     @classmethod
+    def __init_subclass__(cls, **kwargs):
+        if (table_name := kwargs.get("table")) is None:
+            table_name = re.sub(r"([a-zA-Z])([A-Z])", r"\1_\2", cls.__name__).lower()
+        cls.__table__ = table_name
+
+    @classmethod
     def __pydantic_init_subclass__(cls, **kwargs):
         super().__pydantic_init_subclass__(**kwargs)
-        if (table_name := cls.__table_name__) is None:
-            table_name = re.sub(r"([a-zA-Z])([A-Z])", r"\1_\2", cls.__name__).lower()
-        cls.__resolved_table_name__ = table_name
         cls.__sql_fields__ = {
             name: db_field(name, field)
             for name, field in cls.model_fields.items()
@@ -137,7 +139,7 @@ class TableModel(BaseModel):
     @classmethod
     async def sqlite_init(cls, db: aiosqlite.Connection) -> None:
         for subcls in cls.__subclasses__():
-            table_name = re.sub(r"([a-zA-Z])([A-Z])", r"\1_\2", subcls.__name__).lower()
+            table_name = subcls.__table__
 
             column_names = [name for name in subcls.model_fields.keys()]
             for name in column_names:
@@ -260,7 +262,7 @@ class TableModel(BaseModel):
         name_str = ", ".join(names)
         value_params = list(model.values())
 
-        query = f"INSERT INTO {cls.__resolved_table_name__} ({name_str}) VALUES ({param_str})"
+        query = f"INSERT INTO {cls.__table__} ({name_str}) VALUES ({param_str})"
         async with db.execute_insert(query, value_params) as rowid_tuple:
             assert rowid_tuple is not None
             obj.id = rowid_tuple[0]
@@ -289,7 +291,7 @@ class TableModel(BaseModel):
     async def select_count(
         cls, db: aiosqlite.Connection, query: str = "", params: Sequence[Any] = ()
     ) -> int:
-        query = "SELECT count(*) FROM {} {}".format(cls.__resolved_table_name__, query)
+        query = "SELECT count(*) FROM {} {}".format(cls.__table__, query)
         async with db.execute(query, params) as cursor:
             row = await cursor.fetchone()
             return row[0] if row is not None else 0
@@ -300,12 +302,12 @@ class TableModel(BaseModel):
     ) -> None:
         if "where" not in query.lower():
             raise ValueError("remove() query must contain WHERE clause")
-        query = f"DELETE FROM {cls.__resolved_table_name__} {query}"
+        query = f"DELETE FROM {cls.__table__} {query}"
         await db.execute(query, params)
         await db.commit()
 
     async def remove_one(self, db: aiosqlite.Connection) -> None:
-        query = f"DELETE FROM {self.__class__.__resolved_table_name__} WHERE id=?"
+        query = f"DELETE FROM {self.__class__.__table__} WHERE id=?"
         await db.execute(query, (self.id,))
         await db.commit()
 
@@ -328,7 +330,7 @@ class TableModel(BaseModel):
             v.model_dump_json() if isinstance(v, BaseModel) else (orjson.dumps(v) if k in json_fields else v)
             for k, v in kwargs.items()
         ) + tuple(params)
-        query = f"UPDATE {cls.__resolved_table_name__} SET {', '.join(updates)} {query}"
+        query = f"UPDATE {cls.__table__} SET {', '.join(updates)} {query}"
         await db.execute(query, params)
         await db.commit()
 
