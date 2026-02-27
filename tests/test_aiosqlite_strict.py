@@ -276,6 +276,45 @@ async def test_insert_many_rolls_back_on_partial_failure() -> None:
 
 
 @pytest.mark.asyncio
+async def test_insert_many_failure_does_not_rollback_unrelated_open_transaction() -> None:
+    class Base(TableModel):
+        pass
+
+    class Marker(Base):
+        note: str
+
+    class Item(Base):
+        __unique__ = [("name",)]
+
+        name: str
+        quantity: int
+
+    async with aiosqlite.connect(":memory:") as db:
+        await Base.sqlite_init(db)
+
+        await db.execute(
+            f"INSERT INTO {Marker.__table__} (note) VALUES (?)",
+            ("pending work",),
+        )
+        assert db.in_transaction
+
+        with pytest.raises(sqlite3.IntegrityError):
+            await Item.insert_many(
+                db,
+                [
+                    Item(name="first", quantity=1),
+                    Item(name="second", quantity=2),
+                    Item(name="second", quantity=3),
+                ],
+            )
+
+        await db.commit()
+
+        assert await Marker.select_count(db) == 1
+        assert await Item.select_count(db) == 0
+
+
+@pytest.mark.asyncio
 async def test_remove_one() -> None:
     class Base(TableModel):
         pass
