@@ -253,22 +253,6 @@ class TableModel(BaseModel):
         return cls.model_validate(obj)
 
     @classmethod
-    async def _create_typed(cls, db: aiosqlite.Connection, obj: Self) -> Self:
-        model = obj.model_dump_sql()
-        model.pop("id", None)
-
-        names = list(model.keys())
-        param_str = ", ".join("?" for _ in names)
-        name_str = ", ".join(names)
-        value_params = list(model.values())
-
-        query = f"INSERT INTO {cls.__table__} ({name_str}) VALUES ({param_str})"
-        obj.id = await db._execute(_execute_insert, db, query, value_params)
-        await db.commit()
-
-        return obj
-
-    @classmethod
     async def insert_many(
         cls,
         db: aiosqlite.Connection,
@@ -279,7 +263,12 @@ class TableModel(BaseModel):
 
         def submit(objects: list[Self]):
             conn = db._conn
-            with conn:
+            obj_ids: list[int] = []
+
+            # using a savepoint so we don't accidentally roll back an already-open transaction if this throws an exception
+            try:
+                conn.execute("SAVEPOINT aiosqlite_insert_many")
+
                 fields = cls.__sql_fields__.copy()
                 fields.pop("id", None)
                 names = tuple(fields.keys())
@@ -293,20 +282,24 @@ class TableModel(BaseModel):
                     value_params = tuple(model.values())
 
                     cursor = conn.execute(query, value_params)
-                    obj.id = cursor.lastrowid
+                    obj_ids.append(cursor.lastrowid)
+
+                conn.execute("RELEASE SAVEPOINT aiosqlite_insert_many")
+                conn.commit()
+            except Exception:
+                conn.execute("ROLLBACK TO SAVEPOINT aiosqlite_insert_many")
+                conn.execute("RELEASE SAVEPOINT aiosqlite_insert_many")
+                raise
+
+            for obj, _id in zip(objects, obj_ids):
+                obj.id = _id
             return objects
 
         return await db._execute(submit, objects)
 
-    @classmethod
-    async def create[**P, S: Self]( # ty: ignore[invalid-type-variable-bound] # pyright: ignore[reportGeneralTypeIssues]
-        cls: Callable[P, S], # pyright: ignore
-        db: aiosqlite.Connection,
-        *args: P.args,
-        **kwargs: P.kwargs,
-    ) -> S: # pyright: ignore[reportInvalidTypeVarUse]
-        obj = cls(*args, **kwargs)
-        return await obj._create_typed(db, obj) # ty: ignore[unresolved-attribute]
+    async def insert(self, db: aiosqlite.Connection) -> None:
+        await self.insert_many(db, [self])
+        return self
 
     @classmethod
     def select(

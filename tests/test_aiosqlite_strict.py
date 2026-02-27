@@ -138,12 +138,8 @@ async def test_sqlite_init_and_crud() -> None:
 
         assert UserProfile.__table__ == "user_profile"
 
-        user1 = await UserProfile.create(
-            db, name="name1", email="e1", meta=Meta(tag="t1")
-        )
-        user2 = await UserProfile.create(
-            db, name="name2", email="e2", meta=Meta(tag="t2")
-        )
+        user1 = await UserProfile(name="name1", email="e1", meta=Meta(tag="t1")).insert(db)
+        user2 = await UserProfile(name="name2", email="e2", meta=Meta(tag="t2")).insert(db)
 
         assert user1.id == 1
         assert user2.id == 2
@@ -185,7 +181,7 @@ async def test_sqlite_init_and_crud() -> None:
         assert "idx_name" in index_names
 
         with pytest.raises(sqlite3.IntegrityError):
-            await UserProfile.create(db, name="name3", email="e2", meta=Meta(tag="t3"))
+            await UserProfile(name="name3", email="e2", meta=Meta(tag="t3")).insert(db)
 
 
 @pytest.mark.asyncio
@@ -200,8 +196,8 @@ async def test_update_and_remove() -> None:
     async with aiosqlite.connect(":memory:") as db:
         await Base.sqlite_init(db)
 
-        item1 = await Item.create(db, name="first", quantity=1)
-        item2 = await Item.create(db, name="second", quantity=2)
+        item1 = await Item(name="first", quantity=1).insert(db)
+        item2 = await Item(name="second", quantity=2).insert(db)
 
         await Item.update(db, "WHERE id=?", [item1.id], name="updated", quantity=3)
 
@@ -291,8 +287,8 @@ async def test_remove_one() -> None:
     async with aiosqlite.connect(":memory:") as db:
         await Base.sqlite_init(db)
 
-        item1 = await Item.create(db, name="first", quantity=1)
-        item2 = await Item.create(db, name="second", quantity=2)
+        item1 = await Item(name="first", quantity=1).insert(db)
+        item2 = await Item(name="second", quantity=2).insert(db)
 
         await item1.remove_one(db)
 
