@@ -45,11 +45,7 @@ class TypedCursor[T: BaseModel](Protocol):
             fields = row_cls.__sql_fields__
             field_names = fields.keys()
             kwargs = dict(zip(field_names, row))
-            kwargs = {
-                k: orjson.loads(v) if fields[k].dbtype == "JSONB" else v
-                for k, v in kwargs.items()
-            }
-            return row_cls.model_validate(kwargs)
+            return row_cls.model_validate_sql(kwargs)
 
         cursor.row_factory = row_factory  # type: ignore
         return cast(Self, cursor)
@@ -239,18 +235,18 @@ class TableModel(BaseModel):
         sql_fields = self.__sql_fields__
         obj = self.model_dump(mode="json")
         return {
-            k: orjson.dumps(v) if sql_fields[k].dbtype == "JSONB" else v
+            k: (None if v is None else orjson.dumps(v)) if sql_fields[k].dbtype == "JSONB" else v
             for k, v in obj.items()
         }
 
     @classmethod
     def model_validate_sql(cls, obj: dict[str, Any]) -> Self:
-        sql_fields = self.__sql_fields__
+        sql_fields = cls.__sql_fields__
         obj = {
-            k: orjson.loads(v) if sql_fields[k].dbtype == "JSONB" else v
-            for k, (v, f) in obj.items()
+            k: (None if v is None else orjson.loads(v)) if sql_fields[k].dbtype == "JSONB" else v
+            for k, v in obj.items()
         }
-        return cls.model_validate(obj, mode="json")
+        return cls.model_validate(obj)
 
     @classmethod
     async def _create_typed(cls, db: aiosqlite.Connection, obj: Self) -> Self:
@@ -329,7 +325,7 @@ class TableModel(BaseModel):
 
         kwargs_fields = {k: (v, sql_fields[k]) for k, v in kwargs.items()}
         params = tuple(
-            f.adapter.dump_json(v) if f.dbtype == "JSONB" else f.adapter.dump_python(v, mode="json")
+            (None if v is None else f.adapter.dump_json(v)) if f.dbtype == "JSONB" else f.adapter.dump_python(v, mode="json")
             for k, (v, f) in kwargs_fields.items()
         ) + tuple(params)
 

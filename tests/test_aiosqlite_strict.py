@@ -291,6 +291,34 @@ async def test_schema_update_add_field_with_default() -> None:
 
 
 @pytest.mark.asyncio
+async def test_schema_update_add_nullable_jsonb_field_with_default_null() -> None:
+    class Meta(BaseModel):
+        tag: str
+
+    class Base(TableModel):
+        pass
+
+    class Record(Base):
+        name: str
+        meta: Meta | None = None
+
+    async with aiosqlite.connect(":memory:") as db:
+        await db.execute(
+            "CREATE TABLE record (id INTEGER PRIMARY KEY DEFAULT 0, name TEXT NOT NULL)"
+        )
+        await db.execute("INSERT INTO record (name) VALUES (?)", ("r1",))
+        await db.commit()
+
+        await Base.sqlite_init(db)
+
+        async with Record.select(db, "WHERE name=?", ("r1",)) as cursor:
+            row = await cursor.fetchone()
+
+        assert row is not None
+        assert row.meta is None
+
+
+@pytest.mark.asyncio
 async def test_schema_update_add_field_without_default_fails() -> None:
     class Base(TableModel):
         pass
