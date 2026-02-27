@@ -372,14 +372,17 @@ def db_field(name: str, field: FieldInfo) -> SqlField:
         extra.append("NOT NULL")
 
     if (default := field.default) is not PydanticUndefined:
-        if default is None:
-            extra.append("DEFAULT NULL")
-        elif isinstance(default, (int, float)):
-            extra.append(f"DEFAULT {default}")
-        elif isinstance(default, str):
-            extra.append(f"DEFAULT {default!r}")
-        else:
-            raise TypeError(f"unsupported default field {name=} {default=}")
+        match default:
+            case None:
+                extra.append("DEFAULT NULL")
+            case int(n):
+                extra.append("DEFAULT {}".format(int(n)))
+            case float(n):
+                extra.append("DEFAULT {}".format(float(n)))
+            case str(s):
+                extra.append("DEFAULT {!r}".format(str(s)))
+            case _:
+                raise TypeError(f"unsupported default field {name=} {default=}")
 
     is_model = inspect.isclass(pytype) and issubclass(pytype, BaseModel)
     if origin in (types.UnionType, typing.Union):

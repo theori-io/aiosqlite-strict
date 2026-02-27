@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 from typing import Literal
 import sqlite3
 
@@ -99,6 +100,22 @@ def test_table_name_resolution() -> None:
 
     assert CamelCase.__resolved_table_name__ == "camel_case"
     assert CustomName.__resolved_table_name__ == "custom_table"
+
+
+@pytest.mark.asyncio
+async def test_sqlite_init_with_named_float_enum_default() -> None:
+    class Status(float, Enum):
+        PENDING = 1.25
+        COMPLETE = 2.5
+
+    class Base(TableModel):
+        pass
+
+    class Job(Base):
+        status: float = Status.PENDING
+
+    async with aiosqlite.connect(":memory:") as db:
+        await Base.sqlite_init(db)
 
 
 @pytest.mark.asyncio
