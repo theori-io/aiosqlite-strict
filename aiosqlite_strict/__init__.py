@@ -282,6 +282,7 @@ class TableModel(BaseModel):
                     value_params = tuple(model.values())
 
                     cursor = conn.execute(query, value_params)
+                    assert cursor.lastrowid is not None
                     obj_ids.append(cursor.lastrowid)
 
                 conn.execute("RELEASE SAVEPOINT aiosqlite_insert_many")
@@ -297,7 +298,7 @@ class TableModel(BaseModel):
 
         return await db._execute(submit, objects)
 
-    async def insert(self, db: aiosqlite.Connection) -> None:
+    async def insert(self, db: aiosqlite.Connection) -> Self:
         await self.insert_many(db, [self])
         return self
 
