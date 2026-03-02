@@ -126,6 +126,8 @@ class TableModel(BaseModel):
     def __init_subclass__(cls, **kwargs):
         if (table_name := kwargs.get("table")) is None:
             table_name = re.sub(r"([a-zA-Z])([A-Z])", r"\1_\2", cls.__name__).lower()
+        if not re.match(r"^\w+$", table_name):
+            raise ValueError(f"invalid table name {table_name!r} on {cls}")
         cls.__table__ = table_name
 
     @classmethod
