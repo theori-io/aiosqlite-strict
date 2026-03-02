@@ -29,8 +29,8 @@ async def main() -> None:
     async with aiosqlite.connect(":memory:") as db:
         await AppTable.sqlite_init(db)
 
-        user1 = await User.create(db, name="name1", email="email1")
-        _ = await User.create(db, name="name2", email="email2")
+        user1 = await User(name="name1", email="email1").insert(db)
+        _ = await User(name="name2", email="email2").insert(db)
 
         async with User.select(db) as cursor:
             print(await cursor.fetchall())
