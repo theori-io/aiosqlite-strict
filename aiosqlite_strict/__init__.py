@@ -430,6 +430,8 @@ def db_field(name: str, field: FieldInfo) -> SqlField:
         dbtype = "BOOLEAN"
     elif pytype is str:
         dbtype = "TEXT"
+    elif pytype is bytes:
+        dbtype = "BLOB"
     elif pytype is datetime:
         dbtype = "DATETIME"
     elif origin in (list, tuple, set):
