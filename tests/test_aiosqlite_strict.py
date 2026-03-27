@@ -30,6 +30,7 @@ def test_db_field_types_and_defaults() -> None:
         ratio: float
         active: bool
         name: str
+        payload: bytes
         created_at: datetime
         kind: Literal["a", "b"]
         note: str | None = None
@@ -51,6 +52,9 @@ def test_db_field_types_and_defaults() -> None:
     )
     assert db_field("name", fields["name"]) == SqlField(
         "name", "TEXT", "TEXT NOT NULL", TypeAdapter(str),
+    )
+    assert db_field("payload", fields["payload"]) == SqlField(
+        "payload", "BLOB", "BLOB NOT NULL", TypeAdapter(bytes),
     )
     assert db_field("created_at", fields["created_at"]) == SqlField(
         "created_at", "DATETIME", "DATETIME NOT NULL", TypeAdapter(datetime),
@@ -76,14 +80,8 @@ def test_db_field_invalid_types() -> None:
     class BadDefaults(BaseModel):
         items: int = [1, 2, 3]  # type: ignore[assignment]
 
-    class BadTypes(BaseModel):
-        blob: bytes
-
     with pytest.raises(TypeError):
         db_field("items", BadDefaults.model_fields["items"])
-
-    with pytest.raises(TypeError):
-        db_field("blob", BadTypes.model_fields["blob"])
 
     assert db_field("bad", InvalidDefault.model_fields["bad"]) == SqlField(
         "bad", "INTEGER", "INTEGER NOT NULL DEFAULT 1", TypeAdapter(int),
@@ -182,6 +180,54 @@ async def test_sqlite_init_and_crud() -> None:
 
         with pytest.raises(sqlite3.IntegrityError):
             await UserProfile(name="name3", email="e2", meta=Meta(tag="t3")).insert(db)
+
+
+@pytest.mark.asyncio
+async def test_sqlite_init_and_crud_with_bytes_blob_roundtrip() -> None:
+    class Base(TableModel):
+        pass
+
+    class Attachment(Base):
+        name: str
+        payload: bytes
+        preview: bytes | None = None
+
+    initial_payload = b"\x00\xffraw-binary"
+    updated_payload = b"\x10\x80updated"
+    preview_payload = b"\x01\xfe"
+
+    async with aiosqlite.connect(":memory:") as db:
+        await Base.sqlite_init(db)
+
+        attachment = await Attachment(name="file.bin", payload=initial_payload).insert(db)
+
+        async with Attachment.select(db, "WHERE id=?", (attachment.id,)) as cursor:
+            row = await cursor.fetchone()
+
+        assert row is not None
+        assert row.payload == initial_payload
+        assert row.preview is None
+
+        await attachment.update_one(db, payload=updated_payload, preview=preview_payload)
+
+        async with Attachment.select(db, "WHERE id=?", (attachment.id,)) as cursor:
+            updated_row = await cursor.fetchone()
+
+        assert updated_row is not None
+        assert updated_row.payload == updated_payload
+        assert updated_row.preview == preview_payload
+
+        async with db.execute(
+            f"SELECT typeof(payload), typeof(preview), payload, preview FROM {Attachment.__table__} WHERE id=?",
+            (attachment.id,),
+        ) as cursor:
+            storage_row = await cursor.fetchone()
+
+        assert storage_row is not None
+        assert storage_row[0] == "blob"
+        assert storage_row[1] == "blob"
+        assert storage_row[2] == updated_payload
+        assert storage_row[3] == preview_payload
 
 
 @pytest.mark.asyncio

@@ -239,10 +239,9 @@ class TableModel(BaseModel):
 
     def model_dump_sql(self) -> dict[str, Any]:
         sql_fields = self.__sql_fields__
-        obj = self.model_dump(mode="json")
         return {
-            k: (None if v is None else orjson.dumps(v)) if sql_fields[k].dbtype == "JSONB" else v
-            for k, v in obj.items()
+            name: _dump_sql_value(getattr(self, name), field)
+            for name, field in sql_fields.items()
         }
 
     @classmethod
@@ -353,7 +352,7 @@ class TableModel(BaseModel):
 
         kwargs_fields = {k: (v, sql_fields[k]) for k, v in kwargs.items()}
         params = tuple(
-            (None if v is None else f.adapter.dump_json(v)) if f.dbtype == "JSONB" else f.adapter.dump_python(v, mode="json")
+            _dump_sql_value(v, f)
             for k, (v, f) in kwargs_fields.items()
         ) + tuple(params)
 
@@ -380,6 +379,16 @@ class TableModel(BaseModel):
             self.__pydantic_validator__.validate_assignment(self, k, v)
             setattr(self, k, v)
         await self._update(db, "WHERE id=?", (self.id,), **kwargs)
+
+
+def _dump_sql_value(value: Any, field: SqlField) -> Any:
+    if value is None:
+        return None
+    if field.dbtype == "JSONB":
+        return field.adapter.dump_json(value)
+    if field.dbtype == "BLOB":
+        return field.adapter.dump_python(value, mode="python")
+    return field.adapter.dump_python(value, mode="json")
 
 
 def db_field(name: str, field: FieldInfo) -> SqlField:
